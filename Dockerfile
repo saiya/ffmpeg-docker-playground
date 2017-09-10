@@ -17,7 +17,7 @@ RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
       git-core emacs24-nox \
       build-essential pkg-config cmake yasm gperf \
       zlib1g-dev libpng-dev libjpeg-dev \
-      file \
+      file locales \
     && \
     locale-gen $(bash -c 'echo ${LANG%.*}') ${LANG} && \
     apt-get clean && \
