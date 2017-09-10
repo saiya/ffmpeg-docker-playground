@@ -5,9 +5,15 @@ Encapsulate `ffmpeg` stuff into Docker image.
 ## Usage
 
 ```
-docker build . -t ffmpeg
-# ... take a coffee break ...
+docker build . -t ffmpeg    # take a coffee break
 
+# To run command in generated container, just use `docker run`
+# Some examples are placed at sample-outputs/*/*.sh
+```
+
+## Testing
+
+```
 # To run serverspec, ruby and `gem install bundler` required
 pushd serverspec
 bundle install
