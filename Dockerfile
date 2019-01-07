@@ -1,44 +1,26 @@
-FROM ubuntu:16.04
-
-ARG APT_SOURCES_LIST=ubuntu/xenial/sources.list.ap-northeast-1.ec2
+FROM ubuntu:18.04
 
 ENV DEBIAN_FRONTEND noninteractive
 # Don't update bootloader: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=594189
 ENV INITRD No
 ENV LANG en_US.UTF-8
 
-ADD ${APT_SOURCES_LIST} /etc/apt/sources.list
-
 RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
     apt-get update && \
     apt-get -y install curl && \
     apt-get install -y --no-install-recommends apt-utils && \
     apt-get -y install \
-      git-core emacs24-nox \
-      build-essential pkg-config cmake yasm gperf \
-      zlib1g-dev libpng-dev libjpeg-dev \
+      git-core bash emacs-nox \
+      build-essential pkg-config cmake yasm nasm gperf \
+      zlib1g-dev libpng-dev libjpeg-dev uuid-dev \
       file locales \
     && \
     locale-gen $(bash -c 'echo ${LANG%.*}') ${LANG} && \
     apt-get clean && \
     rm -r /var/lib/apt/lists/*
 
-
-# ARG FFMPEG_VERSION will be defined at later
-ARG   HARFBUZZ_VERSION=1.5.0
-ARG   FREETYPE_VERSION=2.8
-ARG      EXPAT_VERSION=2.2.4
-ARG FONTCONFIG_VERSION=2.12.4
-ARG    FRIBIDI_VERSION=0.19.7
-ARG     LIBASS_VERSION=0.13.7
-ARG       X264_VERSION=20170823-2245-stable
-ARG       X265_VERSION=2.5
-ARG        OGG_VERSION=1.3.2
-ARG     VORBIS_VERSION=1.3.5
-ARG     THEORA_VERSION=1.1.1
-ARG       LAME_VERSION=3.99.5
-ARG    FDK_AAC_VERSION=0.1.5
-ARG       OPUS_VERSION=1.2.1
+# Use bash because I want to use pipefail in this build.
+SHELL ["/bin/bash", "-c"]
 
 ARG PREFIX=/usr/local
 ARG DEPS_CONFIGURE_OPTS="--prefix=${PREFIX} --enable-static --enable-pic"
@@ -49,119 +31,148 @@ RUN mkdir -p ${BUILD_DIR} && \
     echo DEPS_CONFIGURE_OPTS: ${DEPS_CONFIGURE_OPTS}
 
 # Install freetype once, but re-install after harfbuzz installed
-RUN cd ${BUILD_DIR} && curl -sL http://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz | tar -zx && \
+ARG FREETYPE_VERSION=2.9.1
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz | tar -zx && \
     cd freetype-${FREETYPE_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure-pre.log && \
     make > make-pre.log 2>&1 && make install 2>&1 | tee -a make-pre.log | tee -a make-pre.log && \
     pkg-config freetype2 --modversion
 
 # Install harfbuzz with freetype support
-RUN cd ${BUILD_DIR} && curl -sL https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-${HARFBUZZ_VERSION}.tar.bz2 | tar -jx && \
+ARG HARFBUZZ_VERSION=2.3.0
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-${HARFBUZZ_VERSION}.tar.bz2 | tar -jx && \
     cd harfbuzz-${HARFBUZZ_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} 2>&1 | tee -a configure.log && \
     make > make.log 2>&1 && make install 2>&1 | tee -a make.log && \
     pkg-config harfbuzz --modversion
 
-# Install freetype with harfbuzz, circular dependency resolved
-RUN cd ${BUILD_DIR} && cd freetype-${FREETYPE_VERSION} && \
+# Re-install freetype with harfbuzz
+ARG EXPAT_VERSION=2.2.6
+RUN cd ${BUILD_DIR} && set -o pipefail && cd freetype-${FREETYPE_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make > make.log 2>&1 && make install 2>&1 | tee -a make.log && make distclean 2>&1 | tee -a make.log && \
     pkg-config freetype2 --modversion
 
-# fontconfig depends on libexpat
-RUN cd ${BUILD_DIR} && curl -sL https://downloads.sourceforge.net/project/expat/expat/${EXPAT_VERSION}/expat-${EXPAT_VERSION}.tar.bz2 | tar -jx && \
+# libexpat
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://downloads.sourceforge.net/project/expat/expat/${EXPAT_VERSION}/expat-${EXPAT_VERSION}.tar.bz2 | tar -jx && \
     cd expat-${EXPAT_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} 2>&1 | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config expat --modversion
 
-RUN cd ${BUILD_DIR} && curl -sL http://fribidi.org/download/fribidi-${FRIBIDI_VERSION}.tar.bz2 | tar -jx && \
+# libfribidi
+ARG FRIBIDI_VERSION=1.0.5
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fribidi/releases/download/v${FRIBIDI_VERSION}/fribidi-${FRIBIDI_VERSION}.tar.bz2 | tar -jx && \
     cd fribidi-${FRIBIDI_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config fribidi --modversion
 
-RUN ldconfig  # Otherwise, fontconfig fails to build (requires to load libfreetype for cache preloading in `make install`)
-RUN cd ${BUILD_DIR} && curl -sL https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.bz2 | tar -jx && \
+# fontconfig (depends on libexpat)
+ARG FONTCONFIG_VERSION=2.13.1
+# Without ldconfig, fontconfig fails to build (requires to load libfreetype for cache preloading in `make install`)
+RUN ldconfig  
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.bz2 | tar -jx && \
     cd fontconfig-${FONTCONFIG_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --disable-docs | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log  && \
     pkg-config fontconfig --modversion
 
-# libass depends on fontconfig, fridibi
-RUN cd ${BUILD_DIR} && curl -sL https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz | tar -zx && \
+# libass (depends on fontconfig, fridibi)
+ARG LIBASS_VERSION=0.14.0
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz | tar -zx && \
     cd libass-${LIBASS_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --enable-fontconfig | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config libass --modversion
 
-RUN cd ${BUILD_DIR} && curl -sL https://ftp.videolan.org/pub/videolan/x264/snapshots/x264-snapshot-${X264_VERSION}.tar.bz2 | tar -jx && \
+# x264
+ARG X264_VERSION=20190105-2245-stable
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://download.videolan.org/pub/videolan/x264/snapshots/x264-snapshot-${X264_VERSION}.tar.bz2 | tar -jx && \
     cd x264-snapshot-${X264_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --disable-opencl --disable-cli --enable-pic --enable-static | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config x264 --modversion
 
+# x265
 # multilib.sh builds 12/10/8bit versions with `-DEXPORT_C_API=OFF -DENABLE_SHARED=OFF -DENABLE_CLI=OFF`
-RUN cd ${BUILD_DIR} && curl -sL https://download.videolan.org/pub/videolan/x265/x265_${X265_VERSION}.tar.gz | tar -zx && \
+ARG X265_VERSION=2.9
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://download.videolan.org/pub/videolan/x265/x265_${X265_VERSION}.tar.gz | tar -zx && \
     cd x265_${X265_VERSION}/build/linux && \
     ./multilib.sh | tee -a make.log && \
     make -C 8bit install 2>&1 | tee -a make.log  && \
     pkg-config x265 --modversion
 
-RUN cd ${BUILD_DIR} && curl -sL http://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.gz | tar -zx  && \
+# ogg
+ARG OGG_VERSION=1.3.3
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.gz | tar -zx  && \
     cd libogg-${OGG_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config ogg --modversion
 
-RUN cd ${BUILD_DIR} && curl -sL http://downloads.xiph.org/releases/vorbis/libvorbis-${VORBIS_VERSION}.tar.gz | tar -zx && \
+# vorbis
+ARG VORBIS_VERSION=1.3.6
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://downloads.xiph.org/releases/vorbis/libvorbis-${VORBIS_VERSION}.tar.gz | tar -zx && \
     cd libvorbis-${VORBIS_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config vorbis --modversion
 
-RUN cd ${BUILD_DIR} && curl -sL http://downloads.xiph.org/releases/theora/libtheora-${THEORA_VERSION}.tar.gz | tar -zx && \
+# theora
+ARG THEORA_VERSION=1.1.1
+# `sed -i 's/png_\(sizeof\)/\1/g' examples/png2theora.c` is to fix bug (with libpng >= 1.6)
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ftp.osuosl.org/pub/xiph/releases/theora/libtheora-${THEORA_VERSION}.tar.gz | tar -zx && \
     cd libtheora-${THEORA_VERSION} && \
+    sed -i 's/png_\(sizeof\)/\1/g' examples/png2theora.c && \
     ./configure ${DEPS_CONFIGURE_OPTS} --with-ogg=${PREFIX} | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config theora --modversion
 
-RUN cd ${BUILD_DIR} && curl -sL https://downloads.sf.net/project/lame/lame/${LAME_VERSION%.*}/lame-${LAME_VERSION}.tar.gz | tar -zx && \
+# lame
+ARG LAME_VERSION=3.100
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://jaist.dl.sourceforge.net/project/lame/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz | tar -zx && \
     cd lame-${LAME_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --enable-nasm | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log
     # mp3lame doesn't have pkg-config .pc file
 
-RUN cd ${BUILD_DIR} && curl -sL https://downloads.sourceforge.net/project/opencore-amr/fdk-aac/fdk-aac-${FDK_AAC_VERSION}.tar.gz | tar -zx && \
+# fdk-aac
+ARG FDK_AAC_VERSION=2.0.0
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://downloads.sourceforge.net/project/opencore-amr/fdk-aac/fdk-aac-${FDK_AAC_VERSION}.tar.gz | tar -zx && \
     cd fdk-aac-${FDK_AAC_VERSION} && \
     ./autogen.sh | tee -a configure.log && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config fdk-aac --modversion
 
-RUN cd ${BUILD_DIR} && curl -sL https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz | tar -zx && \
+# opus
+ARG OPUS_VERSION=1.3
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz | tar -zx && \
     cd opus-${OPUS_VERSION} && \
     ./autogen.sh | tee -a configure.log && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config opus --modversion
 
-ARG VPX_VERSION=refs/tags/v1.6.1
-RUN cd ${BUILD_DIR} && git clone https://chromium.googlesource.com/webm/libvpx && \
+# vpx
+ARG VPX_VERSION=refs/tags/v1.7.0
+RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesource.com/webm/libvpx && \
     cd libvpx && git checkout ${VPX_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config vpx --modversion
 
-
-ARG FFMPEG_VERSION=3.3
-RUN ldconfig   # Make installed libraries visible
-RUN cd ${BUILD_DIR} && curl -sL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz | tar -zx && \
+# ffmpeg
+ARG FFMPEG_VERSION=4.1
+# Make installed libraries visible
+RUN ldconfig
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.gz | tar -zx && \
     cd ffmpeg-${FFMPEG_VERSION} && \
     ./configure --prefix=${PREFIX} \
       --pkg-config-flags="--static" \
       --enable-shared --disable-static \
-      --extra-cflags="-O3 -mtune=native -march=native" \
+      --extra-cflags="-O3" \
       --disable-debug --disable-doc --disable-ffplay \
       --enable-gpl --enable-nonfree --enable-version3 \
       --enable-pthreads \
@@ -170,4 +181,7 @@ RUN cd ${BUILD_DIR} && curl -sL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERS
       | tee -a configure.log \
     && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log
-RUN ldconfig   # Make ffmpeg family visible
+RUN ldconfig   # Make ffmpeg libraries visible
+
+# Back to the default
+SHELL ["/bin/sh", "-c"]
