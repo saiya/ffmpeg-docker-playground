@@ -11,7 +11,7 @@ RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
     apt-get install -y --no-install-recommends apt-utils && \
     apt-get -y install \
       git-core bash emacs-nox \
-      build-essential pkg-config cmake yasm nasm gperf \
+      build-essential autoconf libtool pkg-config cmake yasm nasm gperf \
       zlib1g-dev libpng-dev libjpeg-dev uuid-dev \
       file locales \
     && \
@@ -139,7 +139,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://jaist.dl.sourceforge.
 
 # fdk-aac
 ARG FDK_AAC_VERSION=2.0.0
-RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://downloads.sourceforge.net/project/opencore-amr/fdk-aac/fdk-aac-${FDK_AAC_VERSION}.tar.gz | tar -zx && \
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://jaist.dl.sourceforge.net/project/opencore-amr/fdk-aac/fdk-aac-${FDK_AAC_VERSION}.tar.gz | tar -zx && \
     cd fdk-aac-${FDK_AAC_VERSION} && \
     ./autogen.sh | tee -a configure.log && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
@@ -150,7 +150,6 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://downloads.sourceforge
 ARG OPUS_VERSION=1.3
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://archive.mozilla.org/pub/opus/opus-${OPUS_VERSION}.tar.gz | tar -zx && \
     cd opus-${OPUS_VERSION} && \
-    ./autogen.sh | tee -a configure.log && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config opus --modversion
