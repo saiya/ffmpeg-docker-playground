@@ -12,8 +12,11 @@ RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
     apt-get -y install \
       python3 \
       git-core bash emacs-nox \
-      build-essential autoconf libtool pkg-config cmake cmake-curses-gui yasm nasm gperf \
-      zlib1g-dev libpng-dev libjpeg-dev uuid-dev \
+      build-essential autoconf libtool pkg-config meson ninja-build cmake cmake-curses-gui yasm nasm gperf \
+      zlib1g-dev libbz2-dev liblzma-dev \
+      libpng-dev libjpeg-dev libtiff-dev libgif-dev librsvg2-dev \
+      libssl-dev \
+      uuid-dev \
       file locales \
     && \
     locale-gen $(bash -c 'echo ${LANG%.*}') ${LANG} && \
@@ -25,6 +28,7 @@ SHELL ["/bin/bash", "-c"]
 
 ARG PREFIX=/usr/local
 ARG DEPS_CONFIGURE_OPTS="--prefix=${PREFIX} --enable-static --enable-pic"
+ENV PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig
 
 ENV BUILD_DIR=/root/ffmpeg-build
 RUN mkdir -p ${BUILD_DIR} && \
@@ -100,7 +104,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch stable --depth 1 ht
 ARG X265_VERSION=3.5
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${X265_VERSION} --depth 1 https://bitbucket.org/multicoreware/x265_git && \
     cd x265_git/build/linux && \
-    cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DENABLE_SHARED=off ../../source 2>&1 | tee -a configure.log && \
+    cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" ../../source 2>&1 | tee -a configure.log && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config x265 --modversion
 
@@ -164,13 +168,38 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesourc
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config vpx --modversion
 
-# ffmpeg
-ARG FFMPEG_VERSION=4.3.2
-# Make installed libraries visible
+# AV1 encoder (SvtAv1Enc, library name contains upper-case), requires ffmpeg >= 4.3.3
+ARG SVTAV1D_VERSION=v0.8.6
+RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git && \
+    cd SVT-AV1/Build && \
+    cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_BUILD_TYPE=Release -DBUILD_DEC=OFF .. 2>&1 | tee -a configure.log && \
+    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    pkg-config SvtAv1Enc --modversion
+
+# AV1 decoder (dav1d)
+ARG DAV1D_VERSION=0.8.2
+RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${DAV1D_VERSION} --depth 1 https://code.videolan.org/videolan/dav1d.git && \
+    mkdir dav1d/build && cd dav1d/build && \
+    meson setup -Denable_tools=false -Denable_tests=false --default-library=static .. --prefix "${PREFIX}" | tee -a configure.log && \
+    ninja 2>&1 | tee -a make.log && ninja install 2>&1 | tee -a make.log && \
+    pkg-config dav1d --modversion
+
+# webp (library name contains "lib" prefix)
+ARG WEBP_VERSION=v1.2.0
+RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --depth 1 https://chromium.googlesource.com/webm/libwebp && \
+    cd libwebp && \
+    ./autogen.sh | tee -a configure.log && \
+    ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
+    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    pkg-config libwebp --modversion
+
+# ffmpeg, libav
+ARG FFMPEG_VERSION=snapshot
+# Make installed libraries visible before building ffmpeg/libav
 RUN ldconfig
-# -lpthread is required by libx265 : https://stackoverflow.com/a/62187983/914786
-RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz | tar -Jx && \
-    cd ffmpeg-${FFMPEG_VERSION} && \
+# pthread is required by libx265 : https://stackoverflow.com/a/62187983/914786
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2 | tar -jx && \
+    cd ffmpeg* && \
     ./configure --prefix=${PREFIX} \
       --pkg-config-flags="--static" \
       --enable-shared --disable-static \
@@ -180,7 +209,9 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ffmpeg.org/releases/f
       --enable-gpl --enable-nonfree --enable-version3 \
       --enable-pthreads \
       --enable-avresample --enable-postproc --enable-filters \
-      --enable-libfreetype --enable-libass --enable-libx264 --enable-libx265  --enable-libvorbis --enable-libtheora --enable-libmp3lame --enable-libfdk-aac --enable-libopus --enable-libvpx \
+      --enable-openssl \
+      --enable-librsvg --enable-libwebp \
+      --enable-libfreetype --enable-libass --enable-libx264 --enable-libx265  --enable-libvorbis --enable-libtheora --enable-libmp3lame --enable-libfdk-aac --enable-libopus --enable-libvpx --enable-libsvtav1 --enable-libdav1d \
       | tee -a configure.log \
     && \
     make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log
