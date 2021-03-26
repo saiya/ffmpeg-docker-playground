@@ -2,6 +2,10 @@
 
 Encapsulate `ffmpeg` stuff into Docker image.
 
+This repository provides [Dockerfile](./Dockerfile) so that you can build docker image contains `ffmpeg` binary easily.
+
+Caution: should not redistribute resulted container image unless you are sure licence terms of ALL libraries used in this build.
+
 ## Usage
 
 ```
