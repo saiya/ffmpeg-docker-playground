@@ -9,7 +9,7 @@ jobs:
   build_and_push:
     runs-on: ubuntu-latest
     env:
-      IMAGE_NAME: ffmpeg
+      IMAGE_NAME: ffmpeg-docker-playground
     steps:
       - name: checkout
         uses: actions/checkout@v2
