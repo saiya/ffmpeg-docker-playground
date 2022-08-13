@@ -1,4 +1,4 @@
-FROM ubuntu:20.04
+FROM ubuntu:22.04
 
 ENV DEBIAN_FRONTEND noninteractive
 # Don't update bootloader: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=594189
@@ -16,6 +16,7 @@ RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
       zlib1g-dev libbz2-dev liblzma-dev \
       libpng-dev libjpeg-dev libtiff-dev libgif-dev librsvg2-dev \
       libssl-dev \
+      libexpat1-dev \
       uuid-dev \
       file locales \
     && \
@@ -36,7 +37,7 @@ RUN mkdir -p ${BUILD_DIR} && \
     echo DEPS_CONFIGURE_OPTS: ${DEPS_CONFIGURE_OPTS}
 
 # Install freetype once, but re-install after harfbuzz installed
-ARG FREETYPE_VERSION=2.10.0
+ARG FREETYPE_VERSION=2.12.1
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz | tar -zx && \
     cd freetype-${FREETYPE_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure-pre.log && \
@@ -57,16 +58,8 @@ RUN cd ${BUILD_DIR} && set -o pipefail && cd freetype-${FREETYPE_VERSION} && \
     make > make.log 2>&1 && make install 2>&1 | tee -a make.log && make distclean 2>&1 | tee -a make.log && \
     pkg-config freetype2 --modversion
 
-# libexpat
-ARG EXPAT_VERSION=2.2.10
-RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://downloads.sourceforge.net/project/expat/expat/${EXPAT_VERSION}/expat-${EXPAT_VERSION}.tar.bz2 | tar -jx && \
-    cd expat-${EXPAT_VERSION} && \
-    ./configure ${DEPS_CONFIGURE_OPTS} 2>&1 | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
-    pkg-config expat --modversion
-
 # libfribidi
-ARG FRIBIDI_VERSION=1.0.10
+ARG FRIBIDI_VERSION=1.0.12
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fribidi/releases/download/v${FRIBIDI_VERSION}/fribidi-${FRIBIDI_VERSION}.tar.xz | tar -Jx && \
     cd fribidi-${FRIBIDI_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log \
@@ -74,7 +67,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fr
     pkg-config fribidi --modversion
 
 # fontconfig (depends on libexpat)
-ARG FONTCONFIG_VERSION=2.13.93
+ARG FONTCONFIG_VERSION=2.14.0
 # Without ldconfig, fontconfig fails to build (requires to load libfreetype for cache preloading in `make install`)
 RUN ldconfig
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.xz | tar -Jx && \
@@ -84,7 +77,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/s
     pkg-config fontconfig --modversion
 
 # libass (depends on fontconfig, fridibi)
-ARG LIBASS_VERSION=0.15.0
+ARG LIBASS_VERSION=0.16.0
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz | tar -zx && \
     cd libass-${LIBASS_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --enable-fontconfig | tee -a configure.log && \
@@ -109,7 +102,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${X265_VERSION} --d
     pkg-config x265 --modversion
 
 # ogg
-ARG OGG_VERSION=1.3.4
+ARG OGG_VERSION=1.3.5
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.xz | tar -Jx  && \
     cd libogg-${OGG_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
@@ -143,7 +136,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://jaist.dl.sourceforge.
     # mp3lame doesn't have pkg-config .pc file
 
 # fdk-aac
-ARG FDK_AAC_VERSION=v2.0.1
+ARG FDK_AAC_VERSION=v2.0.2
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${FDK_AAC_VERSION} --depth 1 https://github.com/mstorsjo/fdk-aac.git && \
     cd fdk-aac && \
     ./autogen.sh | tee -a configure.log && \
@@ -161,7 +154,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${OPUS_VERSION} --d
     pkg-config opus --modversion
 
 # vpx
-ARG VPX_VERSION=refs/tags/v1.9.0
+ARG VPX_VERSION=refs/tags/v1.12.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesource.com/webm/libvpx.git && \
     cd libvpx && git checkout ${VPX_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --disable-examples --disable-unit-tests --enable-vp9-highbitdepth --as=yasm | tee -a configure.log && \
@@ -169,7 +162,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesourc
     pkg-config vpx --modversion
 
 # AV1 encoder (SvtAv1Enc, library name contains upper-case), requires ffmpeg >= 4.3.3
-ARG SVTAV1D_VERSION=v0.8.6
+ARG SVTAV1D_VERSION=v1.2.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git && \
     cd SVT-AV1/Build && \
     cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_BUILD_TYPE=Release -DBUILD_DEC=OFF .. 2>&1 | tee -a configure.log && \
@@ -177,7 +170,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} 
     pkg-config SvtAv1Enc --modversion
 
 # AV1 decoder (dav1d)
-ARG DAV1D_VERSION=0.8.2
+ARG DAV1D_VERSION=1.0.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${DAV1D_VERSION} --depth 1 https://code.videolan.org/videolan/dav1d.git && \
     mkdir dav1d/build && cd dav1d/build && \
     meson setup -Denable_tools=false -Denable_tests=false --default-library=static .. --prefix "${PREFIX}" | tee -a configure.log && \
@@ -185,7 +178,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${DAV1D_VERSION} --
     pkg-config dav1d --modversion
 
 # webp (library name contains "lib" prefix)
-ARG WEBP_VERSION=v1.2.0
+ARG WEBP_VERSION=v1.2.4
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --depth 1 https://chromium.googlesource.com/webm/libwebp && \
     cd libwebp && \
     ./autogen.sh | tee -a configure.log && \
@@ -208,9 +201,9 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ffmpeg.org/releases/f
       --disable-debug --disable-doc --disable-ffplay \
       --enable-gpl --enable-nonfree --enable-version3 \
       --enable-pthreads \
-      --enable-avresample --enable-postproc --enable-filters \
+      --enable-autodetect --enable-swresample --enable-swscale --enable-postproc --enable-filters \
       --enable-openssl \
-      --enable-librsvg --enable-libwebp \
+      --enable-libwebp \
       --enable-libfreetype --enable-libass --enable-libx264 --enable-libx265  --enable-libvorbis --enable-libtheora --enable-libmp3lame --enable-libfdk-aac --enable-libopus --enable-libvpx --enable-libsvtav1 --enable-libdav1d \
       | tee -a configure.log \
     && \
