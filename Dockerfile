@@ -68,7 +68,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fr
     pkg-config fribidi --modversion
 
 # fontconfig (depends on libexpat)
-ARG FONTCONFIG_VERSION=2.14.0
+ARG FONTCONFIG_VERSION=2.14.1
 # Without ldconfig, fontconfig fails to build (requires to load libfreetype for cache preloading in `make install`)
 RUN ldconfig
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.xz | tar -Jx && \
@@ -78,7 +78,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/s
     pkg-config fontconfig --modversion
 
 # libass (depends on fontconfig, fridibi)
-ARG LIBASS_VERSION=0.16.0
+ARG LIBASS_VERSION=0.17.0
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz | tar -zx && \
     cd libass-${LIBASS_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --enable-fontconfig | tee -a configure.log && \
@@ -163,7 +163,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesourc
     pkg-config vpx --modversion
 
 # AV1 encoder (SvtAv1Enc, library name contains upper-case), requires ffmpeg >= 4.3.3
-ARG SVTAV1D_VERSION=v1.2.0
+ARG SVTAV1D_VERSION=v1.4.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git && \
     cd SVT-AV1/Build && \
     cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_BUILD_TYPE=Release -DBUILD_DEC=OFF .. 2>&1 | tee -a configure.log && \
@@ -188,7 +188,8 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --d
     pkg-config libwebp --modversion
 
 # ffmpeg, libav
-ARG FFMPEG_VERSION=snapshot
+# http://ffmpeg.org/download.html
+ARG FFMPEG_VERSION=5.1.2
 # Make installed libraries visible before building ffmpeg/libav
 RUN ldconfig
 # pthread is required by libx265 : https://stackoverflow.com/a/62187983/914786
