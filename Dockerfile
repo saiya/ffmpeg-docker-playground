@@ -63,7 +63,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && cd freetype-${FREETYPE_VERSION} && \
 ARG FRIBIDI_VERSION=1.0.12
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fribidi/releases/download/v${FRIBIDI_VERSION}/fribidi-${FRIBIDI_VERSION}.tar.xz | tar -Jx && \
     cd fribidi-${FRIBIDI_VERSION} && \
-    ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log \
+    ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config fribidi --modversion
 
