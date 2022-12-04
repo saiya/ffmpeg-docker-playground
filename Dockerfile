@@ -30,6 +30,7 @@ SHELL ["/bin/bash", "-c"]
 ARG PREFIX=/usr/local
 ARG DEPS_CONFIGURE_OPTS="--prefix=${PREFIX} --enable-static --enable-pic"
 ENV PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig
+ENV MAKEFLAGS -j3
 
 ENV BUILD_DIR=/root/ffmpeg-build
 RUN mkdir -p ${BUILD_DIR} && \
@@ -41,7 +42,7 @@ ARG FREETYPE_VERSION=2.12.1
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz | tar -zx && \
     cd freetype-${FREETYPE_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure-pre.log && \
-    make > make-pre.log 2>&1 && make install 2>&1 | tee -a make-pre.log | tee -a make-pre.log && \
+    make ${MAKEFLAGS} > make-pre.log 2>&1 && make install 2>&1 | tee -a make-pre.log | tee -a make-pre.log && \
     pkg-config freetype2 --modversion
 
 # Install harfbuzz with freetype support
@@ -55,7 +56,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/s
 # Re-install freetype with harfbuzz
 RUN cd ${BUILD_DIR} && set -o pipefail && cd freetype-${FREETYPE_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
-    make > make.log 2>&1 && make install 2>&1 | tee -a make.log && make distclean 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} > make.log 2>&1 && make install 2>&1 | tee -a make.log && make distclean 2>&1 | tee -a make.log && \
     pkg-config freetype2 --modversion
 
 # libfribidi
@@ -63,7 +64,7 @@ ARG FRIBIDI_VERSION=1.0.12
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fribidi/releases/download/v${FRIBIDI_VERSION}/fribidi-${FRIBIDI_VERSION}.tar.xz | tar -Jx && \
     cd fribidi-${FRIBIDI_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config fribidi --modversion
 
 # fontconfig (depends on libexpat)
@@ -73,7 +74,7 @@ RUN ldconfig
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.xz | tar -Jx && \
     cd fontconfig-${FONTCONFIG_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --disable-docs | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log  && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log  && \
     pkg-config fontconfig --modversion
 
 # libass (depends on fontconfig, fridibi)
@@ -81,7 +82,7 @@ ARG LIBASS_VERSION=0.16.0
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz | tar -zx && \
     cd libass-${LIBASS_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --enable-fontconfig | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config libass --modversion
 
 # x264
@@ -89,7 +90,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/libass/lib
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch stable --depth 1 https://code.videolan.org/videolan/x264.git && \
     cd x264 && \
     ./configure ${DEPS_CONFIGURE_OPTS} --enable-pic --enable-static | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config x264 --modversion
 
 # x265
@@ -98,7 +99,7 @@ ARG X265_VERSION=3.5
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${X265_VERSION} --depth 1 https://bitbucket.org/multicoreware/x265_git && \
     cd x265_git/build/linux && \
     cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" ../../source 2>&1 | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config x265 --modversion
 
 # ogg
@@ -106,7 +107,7 @@ ARG OGG_VERSION=1.3.5
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.xz | tar -Jx  && \
     cd libogg-${OGG_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config ogg --modversion
 
 # vorbis
@@ -114,7 +115,7 @@ ARG VORBIS_VERSION=1.3.7
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://downloads.xiph.org/releases/vorbis/libvorbis-${VORBIS_VERSION}.tar.gz | tar -zx && \
     cd libvorbis-${VORBIS_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config vorbis --modversion
 
 # theora
@@ -124,7 +125,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ftp.osuosl.org/pub/xi
     cd libtheora-${THEORA_VERSION} && \
     sed -i 's/png_\(sizeof\)/\1/g' examples/png2theora.c && \
     ./configure ${DEPS_CONFIGURE_OPTS} --with-ogg=${PREFIX} | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config theora --modversion
 
 # lame
@@ -132,7 +133,7 @@ ARG LAME_VERSION=3.100
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://jaist.dl.sourceforge.net/project/lame/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz | tar -zx && \
     cd lame-${LAME_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --enable-nasm | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log
     # mp3lame doesn't have pkg-config .pc file
 
 # fdk-aac
@@ -141,7 +142,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${FDK_AAC_VERSION} 
     cd fdk-aac && \
     ./autogen.sh | tee -a configure.log && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config fdk-aac --modversion
 
 # opus
@@ -150,7 +151,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${OPUS_VERSION} --d
     cd opus && \
     ./autogen.sh | tee -a configure.log && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config opus --modversion
 
 # vpx
@@ -158,7 +159,7 @@ ARG VPX_VERSION=refs/tags/v1.12.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesource.com/webm/libvpx.git && \
     cd libvpx && git checkout ${VPX_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --disable-examples --disable-unit-tests --enable-vp9-highbitdepth --as=yasm | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config vpx --modversion
 
 # AV1 encoder (SvtAv1Enc, library name contains upper-case), requires ffmpeg >= 4.3.3
@@ -166,7 +167,7 @@ ARG SVTAV1D_VERSION=v1.2.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git && \
     cd SVT-AV1/Build && \
     cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_BUILD_TYPE=Release -DBUILD_DEC=OFF .. 2>&1 | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config SvtAv1Enc --modversion
 
 # AV1 decoder (dav1d)
@@ -183,7 +184,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --d
     cd libwebp && \
     ./autogen.sh | tee -a configure.log && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config libwebp --modversion
 
 # ffmpeg, libav
@@ -207,7 +208,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ffmpeg.org/releases/f
       --enable-libfreetype --enable-libass --enable-libx264 --enable-libx265  --enable-libvorbis --enable-libtheora --enable-libmp3lame --enable-libfdk-aac --enable-libopus --enable-libvpx --enable-libsvtav1 --enable-libdav1d \
       | tee -a configure.log \
     && \
-    make 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log
 RUN ldconfig   # Make ffmpeg libraries visible
 RUN ffmpeg -codecs
 
