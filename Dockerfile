@@ -1,9 +1,9 @@
 FROM ubuntu:24.04
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 # Don't update bootloader: https://bugs.debian.org/cgi-bin/bugreport.cgi?bug=594189
-ENV INITRD No
-ENV LANG en_US.UTF-8
+ENV INITRD=No
+ENV LANG=en_US.UTF-8
 
 RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
     apt-get update && \
@@ -30,7 +30,7 @@ SHELL ["/bin/bash", "-c"]
 ARG PREFIX=/usr/local
 ARG DEPS_CONFIGURE_OPTS="--prefix=${PREFIX} --enable-static --enable-pic"
 ENV PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig
-ENV MAKEFLAGS -j3
+ENV MAKEFLAGS=-j3
 
 ENV BUILD_DIR=/root/ffmpeg-build
 RUN mkdir -p ${BUILD_DIR} && \
@@ -38,7 +38,7 @@ RUN mkdir -p ${BUILD_DIR} && \
     echo DEPS_CONFIGURE_OPTS: ${DEPS_CONFIGURE_OPTS}
 
 # Install freetype once, but re-install after harfbuzz installed
-ARG FREETYPE_VERSION=2.13.2
+ARG FREETYPE_VERSION=2.13.3
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz | tar -zx && \
     cd freetype-${FREETYPE_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure-pre.log && \
@@ -60,7 +60,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && cd freetype-${FREETYPE_VERSION} && \
     pkg-config freetype2 --modversion
 
 # libfribidi
-ARG FRIBIDI_VERSION=1.0.15
+ARG FRIBIDI_VERSION=1.0.16
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fribidi/releases/download/v${FRIBIDI_VERSION}/fribidi-${FRIBIDI_VERSION}.tar.xz | tar -Jx && \
     cd fribidi-${FRIBIDI_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
@@ -95,7 +95,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch stable --depth 1 ht
 
 # x265
 # https://trac.ffmpeg.org/wiki/CompilationGuide/Ubuntu
-ARG X265_VERSION=3.6
+ARG X265_VERSION=4.1
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${X265_VERSION} --depth 1 https://bitbucket.org/multicoreware/x265_git && \
     cd x265_git/build/linux && \
     cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" ../../source 2>&1 | tee -a configure.log && \
@@ -155,7 +155,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${OPUS_VERSION} --d
     pkg-config opus --modversion
 
 # vpx
-ARG VPX_VERSION=refs/tags/v1.14.1
+ARG VPX_VERSION=refs/tags/v1.15.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesource.com/webm/libvpx.git && \
     cd libvpx && git checkout ${VPX_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --disable-examples --disable-unit-tests --enable-vp9-highbitdepth --as=yasm | tee -a configure.log && \
@@ -163,7 +163,9 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesourc
     pkg-config vpx --modversion
 
 # AV1 encoder (SvtAv1Enc, library name contains upper-case), requires ffmpeg >= 4.3.3
-ARG SVTAV1D_VERSION=v2.1.2
+# 
+# Currently we using this across all other AV1 encoders (ref: https://www.osumiakari.jp/articles/20231116-ffmpeg-svtav1/ )
+ARG SVTAV1D_VERSION=v2.3.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git && \
     cd SVT-AV1/Build && \
     cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_BUILD_TYPE=Release -DBUILD_DEC=OFF .. 2>&1 | tee -a configure.log && \
@@ -171,7 +173,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} 
     pkg-config SvtAv1Enc --modversion
 
 # AV1 decoder (dav1d)
-ARG DAV1D_VERSION=1.4.3
+ARG DAV1D_VERSION=1.5.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${DAV1D_VERSION} --depth 1 https://code.videolan.org/videolan/dav1d.git && \
     mkdir dav1d/build && cd dav1d/build && \
     meson setup -Denable_tools=false -Denable_tests=false --default-library=static .. --prefix "${PREFIX}" | tee -a configure.log && \
@@ -179,7 +181,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${DAV1D_VERSION} --
     pkg-config dav1d --modversion
 
 # webp (library name contains "lib" prefix)
-ARG WEBP_VERSION=v1.4.0
+ARG WEBP_VERSION=v1.5.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --depth 1 https://chromium.googlesource.com/webm/libwebp && \
     cd libwebp && \
     ./autogen.sh | tee -a configure.log && \
@@ -189,7 +191,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --d
 
 # ffmpeg, libav
 # http://ffmpeg.org/download.html
-ARG FFMPEG_VERSION=7.0.1
+ARG FFMPEG_VERSION=7.1
 # Make installed libraries visible before building ffmpeg/libav
 RUN ldconfig
 # pthread is required by libx265 : https://stackoverflow.com/a/62187983/914786
