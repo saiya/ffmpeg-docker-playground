@@ -2,7 +2,7 @@ require 'spec_helper'
 
 describe 'codecs' do
   subject{ command 'ffmpeg -codecs' }
-  
+
   # D..... = Decoding supported
   # .E.... = Encoding supported
   # ..V... = Video codec
@@ -27,23 +27,23 @@ describe 'codecs' do
 
     # (decoders: aac aac_fixed libfdk_aac ) (encoders: aac libfdk_aac )
     aac: 'DEA.L.',
-    alac: 'DEA..S',  # Apple Lossless
-    amr_nb: 'D.A.L.',
-    amr_wb: 'D.A.L.',
-    ape: 'D.A..S',
-    flac: 'DEA..S',
+    alac: 'DEAI.S',  # Apple Lossless
+    amr_nb: 'D.AIL.',
+    amr_wb: 'D.AIL.',
+    ape: 'D.AI.S',
+    flac: 'DEAI.S',
     # (decoders: mp3 mp3float ) (encoders: libmp3lame )
-    mp3: 'DEA.L.',
+    mp3: 'DEAIL.',
     # (decoders: opus libopus ) (encoders: opus libopus )
-    opus: 'DEA.L.',
+    opus: 'DEAIL.',
     # (decoders: vorbis libvorbis ) (encoders: vorbis libvorbis )
-    vorbis: 'DEA.L.',
-    wmapro: 'D.A.L.',
-    wmav1: 'DEA.L.',
-    wmav2: 'DEA.L.',
+    vorbis: 'DEAIL.',
+    wmapro: 'D.AIL.',
+    wmav1: 'DEAIL.',
+    wmav2: 'DEAIL.',
   }.each do |name, flags|
     it("should support #{name} (#{flags})"){
-      expect(subject.stdout).to match /#{flags.gsub('.', '\\.')} #{name} / 
+      expect(subject.stdout).to match /#{flags.gsub('.', '\\.')} #{name} /
     }
   end
 

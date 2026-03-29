@@ -12,7 +12,7 @@ RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
     apt-get -y install \
       python3 \
       git-core bash emacs-nox wget \
-      build-essential autoconf libtool pkg-config meson ninja-build cmake cmake-curses-gui yasm nasm gperf \
+      build-essential autoconf libtool pkg-config meson ninja-build cmake cmake-curses-gui gperf \
       zlib1g-dev libbz2-dev liblzma-dev \
       libpng-dev libjpeg-dev libtiff-dev libgif-dev librsvg2-dev \
       libssl-dev \
@@ -24,13 +24,21 @@ RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
     apt-get clean && \
     rm -r /var/lib/apt/lists/*
 
+# x86-only assemblers (yasm, nasm) - not needed on ARM
+RUN if [ "$(dpkg --print-architecture)" = "amd64" ]; then \
+      apt-get update && apt-get -y install yasm nasm && \
+      apt-get clean && rm -r /var/lib/apt/lists/*; \
+    fi
+
 # Use bash because I want to use pipefail in this build.
 SHELL ["/bin/bash", "-c"]
 
 ARG PREFIX=/usr/local
 ARG DEPS_CONFIGURE_OPTS="--prefix=${PREFIX} --enable-static --enable-pic"
 ENV PKG_CONFIG_PATH=${PREFIX}/lib/pkgconfig
-ENV MAKEFLAGS=-j3
+# Parallel build jobs; override with --build-arg BUILD_JOBS=N
+ARG BUILD_JOBS=4
+ENV MAKEFLAGS=-j${BUILD_JOBS}
 
 ENV BUILD_DIR=/root/ffmpeg-build
 RUN mkdir -p ${BUILD_DIR} && \
@@ -38,19 +46,19 @@ RUN mkdir -p ${BUILD_DIR} && \
     echo DEPS_CONFIGURE_OPTS: ${DEPS_CONFIGURE_OPTS}
 
 # Install freetype once, but re-install after harfbuzz installed
-ARG FREETYPE_VERSION=2.13.3
+ARG FREETYPE_VERSION=2.14.2
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://download.savannah.gnu.org/releases/freetype/freetype-${FREETYPE_VERSION}.tar.gz | tar -zx && \
     cd freetype-${FREETYPE_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure-pre.log && \
     make ${MAKEFLAGS} > make-pre.log 2>&1 && make install 2>&1 | tee -a make-pre.log | tee -a make-pre.log && \
     pkg-config freetype2 --modversion
 
-# Install harfbuzz with freetype support
-ARG HARFBUZZ_VERSION=2.6.7
-RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/software/harfbuzz/release/harfbuzz-${HARFBUZZ_VERSION}.tar.xz | tar -Jx && \
+# Install harfbuzz with freetype support (>= 3.0 uses meson, download from GitHub)
+ARG HARFBUZZ_VERSION=13.2.1
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/harfbuzz/harfbuzz/releases/download/${HARFBUZZ_VERSION}/harfbuzz-${HARFBUZZ_VERSION}.tar.xz | tar -Jx && \
     cd harfbuzz-${HARFBUZZ_VERSION} && \
-    ./configure ${DEPS_CONFIGURE_OPTS} 2>&1 | tee -a configure.log && \
-    make > make.log 2>&1 && make install 2>&1 | tee -a make.log && \
+    meson setup build --prefix=${PREFIX} --default-library=static --buildtype=release -Dfreetype=enabled -Dtests=disabled -Ddocs=disabled 2>&1 | tee -a configure.log && \
+    ninja -C build 2>&1 | tee make.log && ninja -C build install 2>&1 | tee -a make.log && \
     pkg-config harfbuzz --modversion
 
 # Re-install freetype with harfbuzz
@@ -68,7 +76,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fr
     pkg-config fribidi --modversion
 
 # fontconfig (depends on libexpat)
-ARG FONTCONFIG_VERSION=2.15.0
+ARG FONTCONFIG_VERSION=2.16.0
 # Without ldconfig, fontconfig fails to build (requires to load libfreetype for cache preloading in `make install`)
 RUN ldconfig
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.xz | tar -Jx && \
@@ -78,7 +86,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/s
     pkg-config fontconfig --modversion
 
 # libass (depends on fontconfig, fridibi)
-ARG LIBASS_VERSION=0.17.3
+ARG LIBASS_VERSION=0.17.4
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/libass/libass/releases/download/${LIBASS_VERSION}/libass-${LIBASS_VERSION}.tar.gz | tar -zx && \
     cd libass-${LIBASS_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --enable-fontconfig | tee -a configure.log && \
@@ -103,7 +111,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${X265_VERSION} --d
     pkg-config x265 --modversion
 
 # ogg
-ARG OGG_VERSION=1.3.5
+ARG OGG_VERSION=1.3.6
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://downloads.xiph.org/releases/ogg/libogg-${OGG_VERSION}.tar.xz | tar -Jx  && \
     cd libogg-${OGG_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
@@ -121,18 +129,22 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL http://downloads.xiph.org/rel
 # theora
 ARG THEORA_VERSION=1.1.1
 # `sed -i 's/png_\(sizeof\)/\1/g' examples/png2theora.c` is to fix bug (with libpng >= 1.6)
+# Update config.guess/config.sub for ARM support (theora's copies are from 2002)
 RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ftp.osuosl.org/pub/xiph/releases/theora/libtheora-${THEORA_VERSION}.tar.gz | tar -zx && \
     cd libtheora-${THEORA_VERSION} && \
     sed -i 's/png_\(sizeof\)/\1/g' examples/png2theora.c && \
+    cp /usr/share/misc/config.guess . && cp /usr/share/misc/config.sub . && \
     ./configure ${DEPS_CONFIGURE_OPTS} --with-ogg=${PREFIX} | tee -a configure.log && \
     make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config theora --modversion
 
 # lame
 ARG LAME_VERSION=3.100
-RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://jaist.dl.sourceforge.net/project/lame/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz | tar -zx && \
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://sourceforge.net/projects/lame/files/lame/${LAME_VERSION}/lame-${LAME_VERSION}.tar.gz/download | tar -zx && \
     cd lame-${LAME_VERSION} && \
-    ./configure ${DEPS_CONFIGURE_OPTS} --enable-nasm | tee -a configure.log && \
+    LAME_ASM_FLAG="" && \
+    if [ "$(dpkg --print-architecture)" = "amd64" ]; then LAME_ASM_FLAG="--enable-nasm"; fi && \
+    ./configure ${DEPS_CONFIGURE_OPTS} ${LAME_ASM_FLAG} | tee -a configure.log && \
     make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log
     # mp3lame doesn't have pkg-config .pc file
 
@@ -146,7 +158,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${FDK_AAC_VERSION} 
     pkg-config fdk-aac --modversion
 
 # opus
-ARG OPUS_VERSION=v1.5.2
+ARG OPUS_VERSION=v1.6.1
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${OPUS_VERSION} --depth 1 https://github.com/xiph/opus.git && \
     cd opus && \
     ./autogen.sh | tee -a configure.log && \
@@ -155,17 +167,19 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${OPUS_VERSION} --d
     pkg-config opus --modversion
 
 # vpx
-ARG VPX_VERSION=refs/tags/v1.15.0
+ARG VPX_VERSION=refs/tags/v1.16.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone https://chromium.googlesource.com/webm/libvpx.git && \
     cd libvpx && git checkout ${VPX_VERSION} && \
-    ./configure ${DEPS_CONFIGURE_OPTS} --disable-examples --disable-unit-tests --enable-vp9-highbitdepth --as=yasm | tee -a configure.log && \
+    VPX_ASM_FLAG="" && \
+    if [ "$(dpkg --print-architecture)" = "amd64" ]; then VPX_ASM_FLAG="--as=yasm"; fi && \
+    ./configure ${DEPS_CONFIGURE_OPTS} --disable-examples --disable-unit-tests --enable-vp9-highbitdepth ${VPX_ASM_FLAG} | tee -a configure.log && \
     make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config vpx --modversion
 
 # AV1 encoder (SvtAv1Enc, library name contains upper-case), requires ffmpeg >= 4.3.3
 # 
 # Currently we using this across all other AV1 encoders (ref: https://www.osumiakari.jp/articles/20231116-ffmpeg-svtav1/ )
-ARG SVTAV1D_VERSION=v2.3.0
+ARG SVTAV1D_VERSION=v3.1.2
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} --depth 1 https://gitlab.com/AOMediaCodec/SVT-AV1.git && \
     cd SVT-AV1/Build && \
     cmake -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="${PREFIX}" -DCMAKE_BUILD_TYPE=Release -DBUILD_DEC=OFF .. 2>&1 | tee -a configure.log && \
@@ -173,7 +187,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${SVTAV1D_VERSION} 
     pkg-config SvtAv1Enc --modversion
 
 # AV1 decoder (dav1d)
-ARG DAV1D_VERSION=1.5.0
+ARG DAV1D_VERSION=1.5.3
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${DAV1D_VERSION} --depth 1 https://code.videolan.org/videolan/dav1d.git && \
     mkdir dav1d/build && cd dav1d/build && \
     meson setup -Denable_tools=false -Denable_tests=false --default-library=static .. --prefix "${PREFIX}" | tee -a configure.log && \
@@ -181,7 +195,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${DAV1D_VERSION} --
     pkg-config dav1d --modversion
 
 # webp (library name contains "lib" prefix)
-ARG WEBP_VERSION=v1.5.0
+ARG WEBP_VERSION=v1.6.0
 RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --depth 1 https://chromium.googlesource.com/webm/libwebp && \
     cd libwebp && \
     ./autogen.sh | tee -a configure.log && \
@@ -191,7 +205,7 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --d
 
 # ffmpeg, libav
 # http://ffmpeg.org/download.html
-ARG FFMPEG_VERSION=7.1
+ARG FFMPEG_VERSION=8.0.1
 # Make installed libraries visible before building ffmpeg/libav
 RUN ldconfig
 # pthread is required by libx265 : https://stackoverflow.com/a/62187983/914786
@@ -205,10 +219,10 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://ffmpeg.org/releases/f
       --disable-debug --disable-doc --disable-ffplay \
       --enable-gpl --enable-nonfree --enable-version3 \
       --enable-pthreads \
-      --enable-autodetect --enable-swresample --enable-swscale --enable-postproc --enable-filters \
+      --enable-autodetect --enable-swresample --enable-swscale --enable-filters \
       --enable-openssl \
       --enable-libwebp \
-      --enable-libfreetype --enable-libass --enable-libx264 --enable-libx265  --enable-libvorbis --enable-libtheora --enable-libmp3lame --enable-libfdk-aac --enable-libopus --enable-libvpx --enable-libsvtav1 --enable-libdav1d \
+      --enable-libfreetype --enable-libharfbuzz --enable-libfontconfig --enable-libfribidi --enable-libass --enable-libx264 --enable-libx265  --enable-libvorbis --enable-libtheora --enable-libmp3lame --enable-libfdk-aac --enable-libopus --enable-libvpx --enable-libsvtav1 --enable-libdav1d \
       | tee -a configure.log \
     && \
     make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log

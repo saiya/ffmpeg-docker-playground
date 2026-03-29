@@ -2,3 +2,5 @@
 .dockerignore
 
 serverspec
+test-media
+tests
