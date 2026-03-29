@@ -5,12 +5,15 @@ on:
     branches-ignore:
       - master
 
+permissions:
+  contents: read
+
 jobs:
   build_and_test:
     runs-on: ubuntu-latest
     steps:
       - name: checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Build
         run: docker build . -t ffmpeg-test
