@@ -80,7 +80,12 @@ RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/fribidi/fr
 ARG FONTCONFIG_VERSION=2.16.0
 # Without ldconfig, fontconfig fails to build (requires to load libfreetype for cache preloading in `make install`)
 RUN ldconfig
-RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://www.freedesktop.org/software/fontconfig/release/fontconfig-${FONTCONFIG_VERSION}.tar.xz | tar -Jx && \
+# Pull the release tarball from gitlab.freedesktop.org's package registry instead of
+# www.freedesktop.org/software/fontconfig/release/. The www host sits behind a "go-away"
+# anti-bot CDN that intermittently returns an HTML challenge to non-interactive clients
+# (CI runners), which broke the build with `xz: File format not recognized`. The GitLab
+# packages endpoint serves the byte-identical upstream tarball without that gate.
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -fsSL --retry 3 --retry-delay 5 https://gitlab.freedesktop.org/api/v4/projects/890/packages/generic/fontconfig/${FONTCONFIG_VERSION}/fontconfig-${FONTCONFIG_VERSION}.tar.xz | tar -Jx && \
     cd fontconfig-${FONTCONFIG_VERSION} && \
     ./configure ${DEPS_CONFIGURE_OPTS} --disable-docs | tee -a configure.log && \
     make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log  && \
