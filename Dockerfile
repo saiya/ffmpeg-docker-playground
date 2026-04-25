@@ -15,6 +15,7 @@ RUN echo 'force-unsafe-io' >> /etc/dpkg/dpkg.cfg.d/02apt-speedup && \
       build-essential autoconf libtool pkg-config meson ninja-build cmake cmake-curses-gui gperf \
       zlib1g-dev libbz2-dev liblzma-dev \
       libpng-dev libjpeg-dev libtiff-dev libgif-dev librsvg2-dev \
+      libde265-dev \
       libssl-dev \
       libexpat1-dev \
       uuid-dev \
@@ -202,6 +203,28 @@ RUN cd ${BUILD_DIR} && set -o pipefail && git clone --branch ${WEBP_VERSION} --d
     ./configure ${DEPS_CONFIGURE_OPTS} | tee -a configure.log && \
     make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
     pkg-config libwebp --modversion
+
+# libheif: provides the heif-enc / heif-dec command-line tools used to
+# encode and decode HEIC/HEIF files. ffmpeg in this image does NOT link
+# against libheif (8.0.1 doesn't expose --enable-libheif and reading HEIC
+# via the mov demuxer only surfaces the embedded preview JPEG, not the
+# full-resolution tile grid), so anything that needs a full-res HEIC →
+# JPEG conversion should call heif-dec directly.
+#
+# Depends on libde265 (HEVC decode) — already brought in via apt above.
+#
+# Static build (BUILD_SHARED_LIBS=OFF): heif-enc statically links libheif so
+# we sidestep a known shared-build issue where the bundled binary mis-links
+# against an undefined sequence-API symbol on this image's toolchain.
+ARG LIBHEIF_VERSION=1.20.2
+RUN cd ${BUILD_DIR} && set -o pipefail && curl -sL https://github.com/strukturag/libheif/releases/download/v${LIBHEIF_VERSION}/libheif-${LIBHEIF_VERSION}.tar.gz | tar -zx && \
+    cd libheif-${LIBHEIF_VERSION} && \
+    mkdir build && cd build && \
+    cmake -DCMAKE_INSTALL_PREFIX=${PREFIX} -DBUILD_SHARED_LIBS=OFF -DCMAKE_POSITION_INDEPENDENT_CODE=ON -DWITH_EXAMPLES=ON -DWITH_GDK_PIXBUF=OFF .. 2>&1 | tee -a configure.log && \
+    make ${MAKEFLAGS} 2>&1 | tee -a make.log && make install 2>&1 | tee -a make.log && \
+    pkg-config libheif --modversion && \
+    echo "${PREFIX}/lib" > /etc/ld.so.conf.d/local.conf && ldconfig && \
+    heif-enc --version | head -1
 
 # ffmpeg, libav
 # http://ffmpeg.org/download.html
