@@ -18,9 +18,23 @@ jobs:
       - name: Build
         run: docker build . -t ffmpeg-test
 
+      # "Can this build encode X at all?" - the capability check.
       - name: Run media tests
         run: |
           docker run --rm \
             -v "${{ github.workspace }}/test-media:/test-media:ro" \
             -v "${{ github.workspace }}/tests:/tests:ro" \
             ffmpeg-test bash /tests/run-media-tests.sh
+
+      # "Does a real downstream argument set still produce the same file?" - the
+      # regression check. It runs whole transcode profiles end to end and examines the
+      # OUTPUT: container facts exactly (codec, profile, level, tag, pixel format, moov
+      # before mdat), signal quality against the input within a band. Those are the things
+      # an image can break while every codec is still present and every capability test
+      # still passes. Takes a few seconds; see tests/run-profile-regression-tests.sh.
+      - name: Run downstream profile regression tests
+        run: |
+          docker run --rm \
+            -v "${{ github.workspace }}/test-media:/test-media:ro" \
+            -v "${{ github.workspace }}/tests:/tests:ro" \
+            ffmpeg-test bash /tests/run-profile-regression-tests.sh
